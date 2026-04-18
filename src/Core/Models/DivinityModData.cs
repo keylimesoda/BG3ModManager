@@ -236,6 +236,9 @@ public class DivinityModData : DivinityBaseModData, ISelectable
 	[Reactive] public DivinityModWorkshopData WorkshopData { get; set; }
 	[Reactive] public NexusModsModData NexusModsData { get; set; }
 	[Reactive] public GithubModData GithubData { get; set; }
+	[Reactive] public NexusUpdateState NexusUpdateState { get; set; } = NexusUpdateState.Unknown;
+	[Reactive] public string NexusLatestVersion { get; set; } = string.Empty;
+	[Reactive] public string NexusCheckError { get; set; } = string.Empty;
 
 	public string GetURL(ModSourceType modSourceType, bool asProtocol = false)
 	{

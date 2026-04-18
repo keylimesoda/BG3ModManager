@@ -252,6 +252,8 @@
 		</Grid>
 	</DataTemplate>
 
+	<local:NexusUpdateStateToBadgeConverter x:Key="NexusUpdateStateToBadgeConverter" />
+
 	<Style x:Key="DivinityModDataListItem" BasedOn="{StaticResource {x:Type ListViewItem}}" TargetType="{x:Type ListViewItem}">
 		<Setter Property="behavior:ScreenReaderHelperBehavior.Automatic" Value="True" />
 		<!--<Style.Resources>
@@ -283,6 +285,13 @@
 						<MenuItem.Icon>
 							<Image Source="{StaticResource OpenInBrowserImage}" />
 						</MenuItem.Icon>
+					</MenuItem>
+					<MenuItem Header="Nexus">
+						<MenuItem Command="{Binding Path=CheckNexusModUpdatesCommand, Source={x:Static dapp:DivinityApp.Commands}}" CommandParameter="{Binding}" Header="Check for Updates" />
+						<MenuItem Command="{Binding Path=OpenNexusSetModIdCommand, Source={x:Static dapp:DivinityApp.Commands}}" CommandParameter="{Binding}" Header="Set Nexus Mod ID…" />
+						<MenuItem Command="{Binding Path=OpenNexusReviewMatchCommand, Source={x:Static dapp:DivinityApp.Commands}}" CommandParameter="{Binding}" Header="Review Match…" />
+						<MenuItem Command="{Binding Path=MarkModNotOnNexusCommand, Source={x:Static dapp:DivinityApp.Commands}}" CommandParameter="{Binding}" Header="Mark 'Not on Nexus'" />
+						<MenuItem Command="{Binding Path=OpenNexusModsPageCommand, Source={x:Static dapp:DivinityApp.Commands}}" CommandParameter="{Binding}" Header="Open on Nexus…" IsEnabled="{Binding CanOpenNexusModsLink}" />
 					</MenuItem>
 					<MenuItem Command="{Binding Path=ToggleForceAllowInLoadOrderCommand, Source={x:Static dapp:DivinityApp.Commands}}" CommandParameter="{Binding}" Visibility="{Binding ToggleForceAllowInLoadOrderVisibility}">
 						<MenuItem.Icon>
@@ -858,10 +867,27 @@
 					<TextBlock Text="Name" />
 				</GridViewColumn.Header>
 			</GridViewColumn>
-			<GridViewColumn Width="80" Header="Version" HeaderTemplate="{StaticResource GridViewTextblockHeaderTemplate}">
+			<GridViewColumn Width="100" Header="Version" HeaderTemplate="{StaticResource GridViewTextblockHeaderTemplate}">
 				<GridViewColumn.CellTemplate>
 					<DataTemplate>
-						<TextBlock Text="{Binding DisplayVersion}" TextAlignment="Left" ToolTip="{Binding DisplayVersion}" />
+						<StackPanel Orientation="Horizontal">
+							<TextBlock Text="{Binding DisplayVersion}" TextAlignment="Left" ToolTip="{Binding DisplayVersion}" />
+							<Button Margin="6,0,0,0"
+								Padding="0"
+								Background="Transparent"
+								BorderThickness="0"
+								Command="{Binding Path=OpenNexusReviewMatchCommand, Source={x:Static dapp:DivinityApp.Commands}}"
+								CommandParameter="{Binding}"
+								Focusable="True"
+								IsTabStop="True"
+								AutomationProperties.Name="Nexus update status badge"
+								IsEnabled="{Binding NexusUpdateState, Converter={StaticResource NexusUpdateStateToBadgeConverter}, ConverterParameter=Clickable}"
+								ToolTip="{Binding NexusCheckError}">
+								<TextBlock Foreground="{Binding NexusUpdateState, Converter={StaticResource NexusUpdateStateToBadgeConverter}, ConverterParameter=Foreground}"
+									Text="{Binding NexusUpdateState, Converter={StaticResource NexusUpdateStateToBadgeConverter}, ConverterParameter=Glyph}"
+									Visibility="{Binding NexusUpdateState, Converter={StaticResource NexusUpdateStateToBadgeConverter}}" />
+							</Button>
+						</StackPanel>
 					</DataTemplate>
 				</GridViewColumn.CellTemplate>
 			</GridViewColumn>
@@ -907,10 +933,17 @@
 					<TextBlock Text="Name" />
 				</GridViewColumn.Header>
 			</GridViewColumn>
-			<GridViewColumn Width="80" Header="Version" HeaderTemplate="{StaticResource GridViewTextblockHeaderTemplate}">
+			<GridViewColumn Width="100" Header="Version" HeaderTemplate="{StaticResource GridViewTextblockHeaderTemplate}">
 				<GridViewColumn.CellTemplate>
 					<DataTemplate>
-						<TextBlock Text="{Binding DisplayVersion}" TextAlignment="Left" ToolTip="{Binding DisplayVersion}" />
+						<StackPanel Orientation="Horizontal">
+							<TextBlock Text="{Binding DisplayVersion}" TextAlignment="Left" ToolTip="{Binding DisplayVersion}" />
+							<TextBlock Margin="6,0,0,0"
+								Foreground="{Binding NexusUpdateState, Converter={StaticResource NexusUpdateStateToBadgeConverter}, ConverterParameter=Foreground}"
+								Text="{Binding NexusUpdateState, Converter={StaticResource NexusUpdateStateToBadgeConverter}, ConverterParameter=Glyph}"
+								ToolTip="{Binding NexusCheckError}"
+								Visibility="{Binding NexusUpdateState, Converter={StaticResource NexusUpdateStateToBadgeConverter}}" />
+						</StackPanel>
 					</DataTemplate>
 				</GridViewColumn.CellTemplate>
 			</GridViewColumn>
@@ -939,10 +972,17 @@
 			    CellTemplate="{StaticResource ModNameTemplate}"
 			    Header="Name"
 			    HeaderTemplate="{StaticResource GridViewTextblockHeaderTemplate}" />
-			<GridViewColumn Width="80" Header="Version" HeaderTemplate="{StaticResource GridViewTextblockHeaderTemplate}">
+			<GridViewColumn Width="100" Header="Version" HeaderTemplate="{StaticResource GridViewTextblockHeaderTemplate}">
 				<GridViewColumn.CellTemplate>
 					<DataTemplate>
-						<TextBlock Text="{Binding DisplayVersion}" TextAlignment="Left" ToolTip="{Binding DisplayVersion}" />
+						<StackPanel Orientation="Horizontal">
+							<TextBlock Text="{Binding DisplayVersion}" TextAlignment="Left" ToolTip="{Binding DisplayVersion}" />
+							<TextBlock Margin="6,0,0,0"
+								Foreground="{Binding NexusUpdateState, Converter={StaticResource NexusUpdateStateToBadgeConverter}, ConverterParameter=Foreground}"
+								Text="{Binding NexusUpdateState, Converter={StaticResource NexusUpdateStateToBadgeConverter}, ConverterParameter=Glyph}"
+								ToolTip="{Binding NexusCheckError}"
+								Visibility="{Binding NexusUpdateState, Converter={StaticResource NexusUpdateStateToBadgeConverter}}" />
+						</StackPanel>
 					</DataTemplate>
 				</GridViewColumn.CellTemplate>
 			</GridViewColumn>

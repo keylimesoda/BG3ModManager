@@ -376,6 +376,8 @@ public static class NexusModsDataLoader
 			var updateState = ComputeUpdateState(localVersion, nexusVersion);
 
 			SetUpdateState(mod, updateState);
+			mod.NexusLatestVersion = nexusVersion ?? string.Empty;
+			mod.NexusCheckError = string.Empty;
 			localState.NexusUpdateState = updateState;
 			localState.NexusLatestVersion = nexusVersion;
 			localState.NexusLastChecked = DateTime.UtcNow;
@@ -401,6 +403,7 @@ public static class NexusModsDataLoader
 			DivinityApp.Log($"[Nexus] Failed checking '{modName}':\n{ex}");
 			var state = GetOrCreateLocalState(cacheHandler, mod);
 			SetUpdateState(mod, NexusUpdateState.CheckFailed);
+			mod.NexusCheckError = ex.Message ?? "Check failed.";
 			state.NexusUpdateState = NexusUpdateState.CheckFailed;
 			state.NexusLastChecked = DateTime.UtcNow;
 			state.LastError = ex.Message;
@@ -640,6 +643,10 @@ public static class NexusModsDataLoader
 		if (prop != null && prop.CanWrite && prop.PropertyType == typeof(NexusUpdateState))
 		{
 			prop.SetValue(mod, state);
+		}
+		else
+		{
+			mod.NexusUpdateState = state;
 		}
 	}
 

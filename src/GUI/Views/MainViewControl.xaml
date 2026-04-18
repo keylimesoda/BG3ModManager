@@ -454,6 +454,17 @@
 								<Button x:Name="RefreshButton" ToolTip="Refresh Mods">
 									<controls:AutoGrayableImage Source="{StaticResource RefreshImage}" />
 								</Button>
+								<StackPanel Margin="6,0,0,0" Orientation="Horizontal" Visibility="{Binding HasValidNexusKey, Converter={StaticResource BoolToVisibilityConverter}}">
+									<Button x:Name="CheckNexusUpdatesButton"
+										MinWidth="138"
+										Command="{Binding CheckForNexusUpdatesCommand}"
+										ToolTip="Check Nexus for mod updates">
+										<StackPanel Orientation="Horizontal">
+											<controls:BusyIndicator Width="14" Height="14" Margin="0,0,6,0" Visibility="{Binding IsCheckingNexusUpdates, Converter={StaticResource BoolToVisibilityConverter}}" />
+											<TextBlock Text="Check for Updates" />
+										</StackPanel>
+									</Button>
+								</StackPanel>
 								<Rectangle />
 								<TextBlock Text="Shortcuts" />
 								<Button x:Name="OpenModsFolderButton" ToolTip="Open Mods Folder">

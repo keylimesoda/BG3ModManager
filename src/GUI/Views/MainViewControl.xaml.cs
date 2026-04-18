@@ -4,11 +4,13 @@
 
 using DivinityModManager.Converters;
 using DivinityModManager.Models.App;
+using DivinityModManager.Models.NexusMods;
 using DivinityModManager.Util;
 using DivinityModManager.Util.ScreenReader;
 using DivinityModManager.ViewModels;
 
 using System.Data;
+using System.Globalization;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
@@ -19,6 +21,47 @@ using System.Windows.Media;
 namespace DivinityModManager.Views;
 
 public class MainViewControlViewBase : ReactiveUserControl<MainWindowViewModel> { }
+
+public sealed class NexusUpdateStateToBadgeConverter : IValueConverter
+{
+	public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+	{
+		var state = value is NexusUpdateState updateState ? updateState : NexusUpdateState.Unknown;
+		var mode = parameter?.ToString() ?? "Visibility";
+
+		switch (mode)
+		{
+			case "Glyph":
+				return state switch
+				{
+					NexusUpdateState.UpToDate => "✓",
+					NexusUpdateState.UpdateAvailable => "↑",
+					NexusUpdateState.NeedsReview => "?",
+					NexusUpdateState.CheckFailed => "!",
+					_ => ""
+				};
+			case "Foreground":
+				return state switch
+				{
+					NexusUpdateState.UpToDate => Brushes.LimeGreen,
+					NexusUpdateState.UpdateAvailable => Brushes.LimeGreen,
+					NexusUpdateState.NeedsReview => Brushes.Goldenrod,
+					NexusUpdateState.CheckFailed => Brushes.IndianRed,
+					_ => Brushes.Transparent
+				};
+			case "Clickable":
+				return state == NexusUpdateState.NeedsReview;
+			case "Visibility":
+			default:
+				return state == NexusUpdateState.Unknown ? Visibility.Collapsed : Visibility.Visible;
+		}
+	}
+
+	public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+	{
+		return Binding.DoNothing;
+	}
+}
 
 public partial class MainViewControl : MainViewControlViewBase
 {
