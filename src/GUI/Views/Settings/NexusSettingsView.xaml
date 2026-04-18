@@ -1,0 +1,74 @@
+﻿<UserControl x:Class="DivinityModManager.Views.Settings.NexusSettingsView"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:adonisUI="clr-namespace:AdonisUI;assembly=AdonisUI"
+	xmlns:controls="clr-namespace:DivinityModManager.Controls"
+	xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+	xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+	xmlns:vm="clr-namespace:DivinityModManager.ViewModels"
+	d:DataContext="{d:DesignInstance Type=vm:MainWindowViewModel}"
+	mc:Ignorable="d">
+	<Grid Margin="10,0">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto" />
+			<RowDefinition Height="Auto" />
+			<RowDefinition Height="Auto" />
+			<RowDefinition Height="Auto" />
+			<RowDefinition Height="*" />
+		</Grid.RowDefinitions>
+
+		<controls:AutoGrid Grid.Row="0"
+			ChildMargin="8,4"
+			ColumnCount="2"
+			Columns="Auto,*"
+			Rows="auto,auto"
+			RowCount="2">
+			<TextBlock Text="Nexus API Key" />
+			<TextBox x:Name="ApiKeyTextBox"
+				 MinWidth="340"
+				 VerticalAlignment="Center"
+				 Text="{Binding Settings.NexusModsAPIKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+			<TextBlock Grid.Row="1"
+				   Grid.Column="1"
+				   Foreground="{DynamicResource {x:Static adonisUI:Brushes.AccentBrush}}"
+				   Text="Get an API key from Nexus →" />
+		</controls:AutoGrid>
+
+		<StackPanel Grid.Row="1" Margin="0,8,0,0" Orientation="Horizontal">
+			<Button x:Name="ValidateApiKeyButton"
+					Padding="20,2"
+					Click="ValidateApiKeyButton_Click"
+					Content="Validate" />
+			<TextBlock x:Name="ValidationStatusText"
+				   Margin="12,0,0,0"
+				   VerticalAlignment="Center" />
+		</StackPanel>
+
+		<CheckBox Grid.Row="2"
+			  Margin="2,10,2,0"
+			  Content="Automatically check for updates after launch"
+			  IsChecked="{Binding Settings.CheckForUpdates, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+		<Expander Grid.Row="3" Margin="0,12,0,0" Header="Advanced">
+			<controls:AutoGrid ChildMargin="8,4"
+				ColumnCount="2"
+				Columns="Auto,*"
+				Rows="auto"
+				RowCount="1">
+				<TextBlock Text="Match confidence preset" />
+				<ComboBox x:Name="MatchPresetComboBox" SelectedIndex="1">
+					<ComboBoxItem Content="Conservative" />
+					<ComboBoxItem Content="Balanced" />
+					<ComboBoxItem Content="Aggressive" />
+				</ComboBox>
+			</controls:AutoGrid>
+		</Expander>
+
+		<TextBlock x:Name="ValidationErrorText"
+			   Grid.Row="4"
+			   Margin="2,10,2,0"
+			   Foreground="#E95B5B"
+			   TextWrapping="Wrap"
+			   Visibility="Collapsed" />
+	</Grid>
+</UserControl>
