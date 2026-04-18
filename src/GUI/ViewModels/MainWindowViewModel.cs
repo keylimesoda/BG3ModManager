@@ -302,6 +302,9 @@ public class MainWindowViewModel : BaseHistoryViewModel, IActivatableViewModel, 
 	private readonly ObservableAsPropertyHelper<Visibility> _logFolderShortcutButtonVisibility;
 	public Visibility LogFolderShortcutButtonVisibility => _logFolderShortcutButtonVisibility.Value;
 
+	private readonly ObservableAsPropertyHelper<bool> _hasValidNexusKey;
+	public bool HasValidNexusKey => _hasValidNexusKey.Value;
+
 	public ICommand ToggleUpdatesViewCommand { get; private set; }
 	public ICommand CheckForAppUpdatesCommand { get; set; }
 	public ICommand CancelMainProgressCommand { get; set; }
@@ -317,7 +320,10 @@ public class MainWindowViewModel : BaseHistoryViewModel, IActivatableViewModel, 
 	public ReactiveCommand<object, Unit> ToggleOrderRenamingCommand { get; set; }
 	public RxCommandUnit RefreshCommand { get; private set; }
 	public RxCommandUnit RefreshModUpdatesCommand { get; private set; }
+	public RxCommandUnit CheckForNexusUpdatesCommand { get; private set; }
 	public ICommand UpdateNexusModsLimitsCommand { get; private set; }
+	[Reactive] public bool IsCheckingNexusUpdates { get; set; }
+	[Reactive] public string NexusCheckStatusMessage { get; set; }
 	public EventHandler OnRefreshed { get; set; }
 
 	private AppServices.IFileWatcherWrapper _modSettingsWatcher;
@@ -4875,6 +4881,54 @@ Directory the zip will be extracted to:
 		StatusBarRightText = $"NexusMods Limits [Hourly ({e.Limits.HourlyRemaining}/{e.Limits.HourlyLimit}) Daily ({e.Limits.DailyRemaining}/{e.Limits.DailyLimit})]";
 	}
 
+	private async Task CheckForNexusUpdatesAsync()
+	{
+		if (IsCheckingNexusUpdates) return;
+
+		try
+		{
+			IsCheckingNexusUpdates = true;
+			NexusCheckStatusMessage = "Checking Nexus updates...";
+
+			var targetMods = UserMods?.ToList() ?? [];
+			if (targetMods.Count <= 0)
+			{
+				NexusCheckStatusMessage = "No mods available to check.";
+				return;
+			}
+
+			var progress = new Progress<NexusCheckProgress>(p =>
+			{
+				if (p.Checked > 0)
+				{
+					NexusCheckStatusMessage = $"Checking {p.Checked} / {p.Total}... {p.CurrentModName}: {p.StatusMessage}";
+				}
+				else
+				{
+					NexusCheckStatusMessage = p.StatusMessage;
+				}
+			});
+
+			await NexusModsDataLoader.CheckForUpdatesAsync(
+				targetMods,
+				UpdateHandler.Nexus,
+				NexusModMatcher.NexusMatcherOptions.Balanced,
+				progress,
+				CancellationToken.None);
+
+			NexusCheckStatusMessage = "Nexus update check complete.";
+		}
+		catch (Exception ex)
+		{
+			DivinityApp.Log($"[Nexus] Check for updates failed:\n{ex}");
+			NexusCheckStatusMessage = "Nexus update check failed.";
+		}
+		finally
+		{
+			IsCheckingNexusUpdates = false;
+		}
+	}
+
 	IDisposable _updateOrderTask = null;
 
 	public void UpdateOrderFromActiveMods()
@@ -4929,6 +4983,14 @@ Directory the zip will be extracted to:
 		{
 			UpdateNexusModsLimitsCommand.Execute(e);
 		};
+
+		_hasValidNexusKey = Settings.WhenAnyValue(x => x.NexusModsAPIKey)
+			.Select(key => !string.IsNullOrWhiteSpace(key))
+			.ToProperty(this, nameof(HasValidNexusKey), false, RxApp.MainThreadScheduler)
+			.DisposeWith(Disposables);
+
+		var canCheckForNexusUpdates = this.WhenAnyValue(x => x.HasValidNexusKey, x => x.IsCheckingNexusUpdates, (hasKey, isBusy) => hasKey && !isBusy);
+		CheckForNexusUpdatesCommand = ReactiveCommand.CreateFromTask(CheckForNexusUpdatesAsync, canCheckForNexusUpdates, RxApp.MainThreadScheduler);
 
 		_isLocked = this.WhenAnyValue(x => x.IsDragging, x => x.IsRefreshing, x => x.IsLoadingOrder, (b1, b2, b3) => b1 || b2 || b3).ToProperty(this, nameof(IsLocked));
 
