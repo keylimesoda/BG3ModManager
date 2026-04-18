@@ -27,6 +27,10 @@ public class DivinityGlobalCommands : ReactiveObject
 	public ReactiveCommand<string, Unit> CopyToClipboardCommand { get; private set; }
 	public ReactiveCommand<DivinityModData, Unit> DeleteModCommand { get; private set; }
 	public ReactiveCommand<DivinityModData, Unit> OpenNexusModsPageCommand { get; private set; }
+	public ReactiveCommand<DivinityModData, Unit> CheckNexusModUpdatesCommand { get; private set; }
+	public ReactiveCommand<DivinityModData, Unit> OpenNexusReviewMatchCommand { get; private set; }
+	public ReactiveCommand<DivinityModData, Unit> OpenNexusSetModIdCommand { get; private set; }
+	public ReactiveCommand<DivinityModData, Unit> MarkModNotOnNexusCommand { get; private set; }
 	public ReactiveCommand<string, Unit> OpenURLCommand { get; private set; }
 	public ReactiveCommand<DivinityModData, Unit> ToggleForceAllowInLoadOrderCommand { get; private set; }
 
@@ -162,6 +166,34 @@ public class DivinityGlobalCommands : ReactiveObject
 
 		OpenURLCommand = ReactiveCommand.Create<string>(OpenURL, canExecuteViewModelCommands);
 		OpenNexusModsPageCommand = ReactiveCommand.Create<DivinityModData>(OpenNexusModsPage, canExecuteViewModelCommands);
+		CheckNexusModUpdatesCommand = ReactiveCommand.CreateFromTask<DivinityModData>(async mod =>
+		{
+			if (_viewModel is MainWindowViewModel vm)
+			{
+				await vm.CheckSingleNexusModUpdateAsync(mod);
+			}
+		}, canExecuteViewModelCommands);
+		OpenNexusReviewMatchCommand = ReactiveCommand.Create<DivinityModData>(mod =>
+		{
+			if (_viewModel is MainWindowViewModel vm)
+			{
+				vm.OpenNexusManualMatchDialog(mod);
+			}
+		}, canExecuteViewModelCommands);
+		OpenNexusSetModIdCommand = ReactiveCommand.Create<DivinityModData>(mod =>
+		{
+			if (_viewModel is MainWindowViewModel vm)
+			{
+				vm.OpenNexusSetModIdDialog(mod);
+			}
+		}, canExecuteViewModelCommands);
+		MarkModNotOnNexusCommand = ReactiveCommand.Create<DivinityModData>(mod =>
+		{
+			if (_viewModel is MainWindowViewModel vm)
+			{
+				vm.SetModNotOnNexus(mod, true);
+			}
+		}, canExecuteViewModelCommands);
 		ToggleForceAllowInLoadOrderCommand = ReactiveCommand.Create<DivinityModData>(ToggleForceAllowInLoadOrder, canExecuteViewModelCommands);
 	}
 }

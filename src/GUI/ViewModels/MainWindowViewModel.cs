@@ -321,6 +321,10 @@ public class MainWindowViewModel : BaseHistoryViewModel, IActivatableViewModel, 
 	public RxCommandUnit RefreshCommand { get; private set; }
 	public RxCommandUnit RefreshModUpdatesCommand { get; private set; }
 	public RxCommandUnit CheckForNexusUpdatesCommand { get; private set; }
+	public ReactiveCommand<DivinityModData, Unit> CheckSingleNexusModUpdatesCommand { get; private set; }
+	public ReactiveCommand<DivinityModData, Unit> OpenNexusManualMatchDialogCommand { get; private set; }
+	public ReactiveCommand<DivinityModData, Unit> OpenNexusSetModIdDialogCommand { get; private set; }
+	public ReactiveCommand<DivinityModData, Unit> MarkModNotOnNexusCommand { get; private set; }
 	public ICommand UpdateNexusModsLimitsCommand { get; private set; }
 	[Reactive] public bool IsCheckingNexusUpdates { get; set; }
 	[Reactive] public string NexusCheckStatusMessage { get; set; }
@@ -4881,6 +4885,107 @@ Directory the zip will be extracted to:
 		StatusBarRightText = $"NexusMods Limits [Hourly ({e.Limits.HourlyRemaining}/{e.Limits.HourlyLimit}) Daily ({e.Limits.DailyRemaining}/{e.Limits.DailyLimit})]";
 	}
 
+	private bool TryGetOrCreateNexusLocalState(DivinityModData mod, out NexusLocalState state)
+	{
+		state = null;
+		if (mod == null) return false;
+		if (!Guid.TryParse(mod.UUID, out var uuid)) return false;
+		if (!UpdateHandler.Nexus.TryGetLocalState(uuid, out state) || state == null)
+		{
+			state = new NexusLocalState() { UUID = uuid };
+		}
+		return true;
+	}
+
+	public async Task CheckSingleNexusModUpdateAsync(DivinityModData mod)
+	{
+		if (mod == null || IsCheckingNexusUpdates) return;
+		await NexusModsDataLoader.CheckForUpdatesAsync([mod], UpdateHandler.Nexus, NexusModMatcher.NexusMatcherOptions.Balanced, null, CancellationToken.None);
+	}
+
+	public void OpenNexusManualMatchDialog(DivinityModData mod)
+	{
+		if (mod == null || Window == null) return;
+
+		var candidates = new List<NexusScoredCandidate>();
+		if (mod.NexusModsData?.ModId >= DivinityApp.NEXUSMODS_MOD_ID_START)
+		{
+			candidates.Add(new NexusScoredCandidate(
+				mod.NexusModsData.ModId,
+				mod.Name ?? string.Empty,
+				mod.Author ?? string.Empty,
+				mod.NexusLatestVersion ?? mod.NexusModsData.Version ?? string.Empty,
+				mod.Description ?? string.Empty,
+				mod.GetURL(ModSourceType.NEXUSMODS),
+				mod.NexusModsData.EndorsementCount,
+				0,
+				1.0,
+				new NexusScoreBreakdown(1, 1, 1, 0, 0, 1, false)));
+		}
+
+		var dialog = new DivinityModManager.Views.Nexus.NexusManualMatchDialog(mod.DisplayName, candidates)
+		{
+			Owner = Window
+		};
+		if (dialog.ShowDialog() == true && dialog.ViewModel.SelectedCandidate != null)
+		{
+			ApplyNexusModId(mod, (int)dialog.ViewModel.SelectedCandidate.ModId);
+		}
+		else if (dialog.ViewModel.MarkedNotOnNexus)
+		{
+			SetModNotOnNexus(mod, true);
+		}
+	}
+
+	public void OpenNexusSetModIdDialog(DivinityModData mod)
+	{
+		if (mod == null || Window == null) return;
+		var dialog = new DivinityModManager.Views.Nexus.NexusSetModIdDialog(mod.DisplayName)
+		{
+			Owner = Window
+		};
+		if (dialog.ShowDialog() == true && dialog.ParsedModId > 0)
+		{
+			ApplyNexusModId(mod, dialog.ParsedModId);
+		}
+	}
+
+	public void ApplyNexusModId(DivinityModData mod, int modId)
+	{
+		if (mod == null || modId < DivinityApp.NEXUSMODS_MOD_ID_START) return;
+		if (TryGetOrCreateNexusLocalState(mod, out var state))
+		{
+			state.ModIdOverride = modId;
+			state.NotOnNexus = false;
+			state.NexusUpdateState = NexusUpdateState.Unknown;
+			state.LastError = null;
+			UpdateHandler.Nexus.SetLocalState(state);
+		}
+		mod.NexusModsData.SetModVersion(modId);
+		mod.NexusUpdateState = NexusUpdateState.Unknown;
+		mod.NexusCheckError = string.Empty;
+	}
+
+	public void SetModNotOnNexus(DivinityModData mod, bool notOnNexus)
+	{
+		if (mod == null) return;
+		if (TryGetOrCreateNexusLocalState(mod, out var state))
+		{
+			state.NotOnNexus = notOnNexus;
+			if (notOnNexus)
+			{
+				state.ModIdOverride = null;
+				state.NexusUpdateState = NexusUpdateState.Unknown;
+			}
+			UpdateHandler.Nexus.SetLocalState(state);
+		}
+		if (notOnNexus)
+		{
+			mod.NexusUpdateState = NexusUpdateState.Unknown;
+			mod.NexusCheckError = string.Empty;
+		}
+	}
+
 	private async Task CheckForNexusUpdatesAsync()
 	{
 		if (IsCheckingNexusUpdates) return;
@@ -4991,6 +5096,10 @@ Directory the zip will be extracted to:
 
 		var canCheckForNexusUpdates = this.WhenAnyValue(x => x.HasValidNexusKey, x => x.IsCheckingNexusUpdates, (hasKey, isBusy) => hasKey && !isBusy);
 		CheckForNexusUpdatesCommand = ReactiveCommand.CreateFromTask(CheckForNexusUpdatesAsync, canCheckForNexusUpdates, RxApp.MainThreadScheduler);
+		CheckSingleNexusModUpdatesCommand = ReactiveCommand.CreateFromTask<DivinityModData>(CheckSingleNexusModUpdateAsync, canCheckForNexusUpdates, RxApp.MainThreadScheduler);
+		OpenNexusManualMatchDialogCommand = ReactiveCommand.Create<DivinityModData>(OpenNexusManualMatchDialog, canCheckForNexusUpdates, RxApp.MainThreadScheduler);
+		OpenNexusSetModIdDialogCommand = ReactiveCommand.Create<DivinityModData>(OpenNexusSetModIdDialog, canCheckForNexusUpdates, RxApp.MainThreadScheduler);
+		MarkModNotOnNexusCommand = ReactiveCommand.Create<DivinityModData>(m => SetModNotOnNexus(m, true), canCheckForNexusUpdates, RxApp.MainThreadScheduler);
 
 		_isLocked = this.WhenAnyValue(x => x.IsDragging, x => x.IsRefreshing, x => x.IsLoadingOrder, (b1, b2, b3) => b1 || b2 || b3).ToProperty(this, nameof(IsLocked));
 
