@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 
 namespace DivinityModManager.Util;
 
-internal static class NexusModMatcher
+public static class NexusModMatcher
 {
 	private const string GraphQlUrl = "https://api.nexusmods.com/v2/graphql";
 	private const string DefaultGameDomain = "baldursgate3";
@@ -50,7 +50,7 @@ internal static class NexusModMatcher
 		"it", "mod", "mods", "are", "on", "at", "by"
 	};
 
-	internal sealed record NexusMatcherOptions(double AutoAcceptThreshold, double MinCandidateScore)
+	public sealed record NexusMatcherOptions(double AutoAcceptThreshold, double MinCandidateScore)
 	{
 		public static NexusMatcherOptions Balanced { get; } = new(0.75, 0.20);
 		public static NexusMatcherOptions Conservative { get; } = new(0.85, 0.30);
