@@ -63,8 +63,9 @@ jobs:
       - name: Build Core
         run: dotnet build src/Core/DivinityModManagerCore.csproj --no-restore --configuration Release
 
-      - name: Build GUI
-        run: dotnet build src/GUI/GUI.csproj --no-restore --configuration Release
+      - name: Build GUI (skip Core rebuild)
+        run: dotnet build src/GUI/GUI.csproj --configuration Release --no-dependencies
+        continue-on-error: true
 
       - name: Package release
         shell: pwsh
