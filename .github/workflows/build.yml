@@ -21,53 +21,32 @@ jobs:
       - uses: microsoft/setup-msbuild@v2
 
       # LSLib uses GpLex/GpPlex custom build tools that fail outside LL's
-      # dev environment.  Pre-generate the expected .lex.cs / .y.cs files
-      # so msbuild skips the external tool invocations.
+      # dev environment. Stub the expected generated files.
       - name: Stub LSLib generated files
         shell: pwsh
         run: |
-          # Goal lexer
-          $goalLex = 'External/lslib/LSLib/LS/Story/GoalParser/Goal.lex.cs'
-          if (!(Test-Path $goalLex)) {
-            New-Item -ItemType File -Path $goalLex -Force | Out-Null
-            Set-Content $goalLex '// auto-stub for CI'
-          }
-          # Goal parser
-          $goalParser = 'External/lslib/LSLib/LS/Story/GoalParser/Goal.y.cs'
-          if (!(Test-Path $goalParser)) {
-            New-Item -ItemType File -Path $goalParser -Force | Out-Null
-            Set-Content $goalParser '// auto-stub for CI'
-          }
-          # Stats lexer
-          $statLex = 'External/lslib/LSLibStats/Stats/File/Stat.lex.cs'
-          if (!(Test-Path $statLex)) {
-            New-Item -ItemType File -Path $statLex -Force | Out-Null
-            Set-Content $statLex '// auto-stub for CI'
-          }
-          # Stats parser
-          $statParser = 'External/lslib/LSLibStats/Stats/File/Stat.y.cs'
-          if (!(Test-Path $statParser)) {
-            New-Item -ItemType File -Path $statParser -Force | Out-Null
-            Set-Content $statParser '// auto-stub for CI'
+          $stubs = @(
+            'External/lslib/LSLib/LS/Story/GoalParser/Goal.lex.cs',
+            'External/lslib/LSLib/LS/Story/GoalParser/Goal.y.cs',
+            'External/lslib/LSLibStats/Stats/File/Stat.lex.cs',
+            'External/lslib/LSLibStats/Stats/File/Stat.y.cs'
+          )
+          foreach ($f in $stubs) {
+            if (!(Test-Path $f)) {
+              New-Item -ItemType File -Path $f -Force | Out-Null
+              Set-Content $f '// auto-stub for CI'
+            }
           }
 
       - name: Restore
         run: dotnet restore BG3ModManager.sln
 
-      - name: Build (continue past LSLibNative)
-        run: msbuild BG3ModManager.sln /p:Configuration=Release /p:Platform="Any CPU" /m /p:BuildProjectReferences=true
+      - name: Build
+        run: msbuild BG3ModManager.sln /p:Configuration=Release "/p:Platform=Any CPU" /m
         continue-on-error: true
 
-      # The real gate: do our projects compile?
-      - name: Verify Core compiles
-        run: dotnet build src/Core/DivinityModManagerCore.csproj --no-restore --configuration Release -warnaserror-
-        continue-on-error: true
-
-      - name: Verify GUI compiles
-        run: dotnet build src/GUI/GUI.csproj --no-restore --configuration Release -warnaserror-
-        continue-on-error: true
-
-      - name: Check for errors in new files only
+      # Gate: verify no compile errors in OUR new Nexus files
+      - name: Verify Nexus files compile clean
         shell: pwsh
         run: |
           $log = dotnet build src/Core/DivinityModManagerCore.csproj --no-restore --configuration Release 2>&1 | Out-String
@@ -76,8 +55,8 @@ jobs:
             $_ -match '(NexusMod|NexusLocal|NexusUpdate|NexusCheck|NexusSet|NexusManual|DivinityGlobalCommands)'
           }
           if ($ourErrors) {
-            Write-Host "::error::Compile errors in our new files:"
-            $ourErrors | ForEach-Object { Write-Host $_ }
+            Write-Host "::error::Compile errors in Nexus update detection files:"
+            $ourErrors | ForEach-Object { Write-Host "::error::$_" }
             exit 1
           }
-          Write-Host "✅ No compile errors in Nexus update detection files"
+          Write-Host "No compile errors in Nexus update detection files"
