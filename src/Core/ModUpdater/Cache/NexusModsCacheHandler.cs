@@ -71,7 +71,9 @@ public class NexusModsCacheHandler : IExternalModCacheHandler<NexusModsCachedDat
 
 	public bool TryGetLocalState(Guid uuid, out NexusLocalState state)
 	{
-		return _localState.Lookup(uuid).TryGetValue(out state);
+		var lookup = _localState.Lookup(uuid);
+		state = lookup.HasValue ? lookup.Value : default!;
+		return lookup.HasValue;
 	}
 
 	public void SetLocalState(NexusLocalState state)
@@ -140,7 +142,7 @@ public class NexusModsCacheHandler : IExternalModCacheHandler<NexusModsCachedDat
 		try
 		{
 			var json = File.ReadAllText(filePath);
-			var data = JsonSerializer.Deserialize<NexusLocalStateCacheFile>(json, _localStateSerializerOptions);
+			var data = System.Text.Json.JsonSerializer.Deserialize<NexusLocalStateCacheFile>(json, _localStateSerializerOptions);
 			if (data?.Mods != null && data.Mods.Count > 0)
 			{
 				_localState.Edit(innerCache =>
@@ -197,7 +199,7 @@ public class NexusModsCacheHandler : IExternalModCacheHandler<NexusModsCachedDat
 				Mods = _localState.Items.ToDictionary(x => x.UUID, x => x)
 			};
 
-			var json = JsonSerializer.Serialize(data, _localStateSerializerOptions);
+			var json = System.Text.Json.JsonSerializer.Serialize(data, _localStateSerializerOptions);
 			var tempPath = $"{filePath}.tmp";
 			await File.WriteAllTextAsync(tempPath, json, cts);
 			File.Move(tempPath, filePath, true);

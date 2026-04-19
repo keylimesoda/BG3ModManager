@@ -168,28 +168,28 @@ public class DivinityGlobalCommands : ReactiveObject
 		OpenNexusModsPageCommand = ReactiveCommand.Create<DivinityModData>(OpenNexusModsPage, canExecuteViewModelCommands);
 		CheckNexusModUpdatesCommand = ReactiveCommand.CreateFromTask<DivinityModData>(async mod =>
 		{
-			if (_viewModel is MainWindowViewModel vm)
+			dynamic vm = _viewModel; if (vm != null)
 			{
 				await vm.CheckSingleNexusModUpdateAsync(mod);
 			}
 		}, canExecuteViewModelCommands);
 		OpenNexusReviewMatchCommand = ReactiveCommand.Create<DivinityModData>(mod =>
 		{
-			if (_viewModel is MainWindowViewModel vm)
+			dynamic vm = _viewModel; if (vm != null)
 			{
 				vm.OpenNexusManualMatchDialog(mod);
 			}
 		}, canExecuteViewModelCommands);
 		OpenNexusSetModIdCommand = ReactiveCommand.Create<DivinityModData>(mod =>
 		{
-			if (_viewModel is MainWindowViewModel vm)
+			dynamic vm = _viewModel; if (vm != null)
 			{
 				vm.OpenNexusSetModIdDialog(mod);
 			}
 		}, canExecuteViewModelCommands);
 		MarkModNotOnNexusCommand = ReactiveCommand.Create<DivinityModData>(mod =>
 		{
-			if (_viewModel is MainWindowViewModel vm)
+			dynamic vm = _viewModel; if (vm != null)
 			{
 				vm.SetModNotOnNexus(mod, true);
 			}
