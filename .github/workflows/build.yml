@@ -41,16 +41,16 @@ jobs:
       - name: Restore
         run: dotnet restore BG3ModManager.sln
 
-      - name: Build
-        run: msbuild BG3ModManager.sln /p:Configuration=Release "/p:Platform=Any CPU" /m
+      - name: Build (Publish config)
+        run: msbuild BG3ModManager.sln /p:Configuration=Publish "/p:Platform=Any CPU" /m
         continue-on-error: true
 
-      # Gate: verify no compile errors in OUR new Nexus files
+      # Verify our Nexus code compiles clean
       - name: Verify Nexus files compile clean
         shell: pwsh
         run: |
           $log = dotnet build src/Core/DivinityModManagerCore.csproj --no-restore --configuration Release 2>&1 | Out-String
-          $LASTEXITCODE = 0  # Reset — LSLib errors are expected
+          $LASTEXITCODE = 0
           $ourErrors = $log -split "`n" | Where-Object {
             $_ -match 'error CS' -and
             $_ -match '(NexusMod|NexusLocal|NexusUpdate|NexusCheck|NexusSet|NexusManual|DivinityGlobalCommands)'
@@ -61,3 +61,24 @@ jobs:
             exit 1
           }
           Write-Host "No compile errors in Nexus update detection files"
+
+      # Package the build output as a downloadable artifact
+      - name: Package build
+        shell: pwsh
+        run: |
+          $outDir = "bin/Publish"
+          if (Test-Path $outDir) {
+            Compress-Archive -Path "$outDir/*" -DestinationPath "BG3ModManager_NexusUpdate.zip" -Force
+            Write-Host "Packaged $(Get-ChildItem $outDir | Measure-Object | Select-Object -Expand Count) files"
+          } else {
+            Write-Host "::warning::Build output not found at $outDir — listing bin/"
+            Get-ChildItem bin/ -Recurse -Depth 2 | Select-Object FullName
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: BG3ModManager-NexusUpdate
+          path: BG3ModManager_NexusUpdate.zip
+          if-no-files-found: warn
