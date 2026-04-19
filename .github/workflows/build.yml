@@ -50,6 +50,7 @@ jobs:
         shell: pwsh
         run: |
           $log = dotnet build src/Core/DivinityModManagerCore.csproj --no-restore --configuration Release 2>&1 | Out-String
+          $LASTEXITCODE = 0  # Reset — LSLib errors are expected
           $ourErrors = $log -split "`n" | Where-Object {
             $_ -match 'error CS' -and
             $_ -match '(NexusMod|NexusLocal|NexusUpdate|NexusCheck|NexusSet|NexusManual|DivinityGlobalCommands)'
