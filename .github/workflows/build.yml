@@ -20,82 +20,99 @@ jobs:
 
       - uses: microsoft/setup-msbuild@v2
 
-      # LSLib uses GpLex/GpPlex custom build tools that fail outside LL's
-      # dev environment. Stub the expected generated files.
-      - name: Stub LSLib generated files
-        shell: pwsh
-        run: |
-          $stubs = @(
-            'External/lslib/LSLib/LS/Story/GoalParser/Goal.lex.cs',
-            'External/lslib/LSLib/LS/Story/GoalParser/Goal.y.cs',
-            'External/lslib/LSLibStats/Stats/File/Stat.lex.cs',
-            'External/lslib/LSLibStats/Stats/File/Stat.y.cs'
-          )
-          foreach ($f in $stubs) {
-            if (!(Test-Path $f)) {
-              New-Item -ItemType File -Path $f -Force | Out-Null
-              Set-Content $f '// auto-stub for CI'
-            }
-          }
-
-      - name: Restore
-        run: dotnet restore BG3ModManager.sln
-
-      - name: Build full solution
-        run: msbuild BG3ModManager.sln /p:Configuration=Release "/p:Platform=Any CPU" /m
-        continue-on-error: true
-
-      # Verify our Nexus code compiles clean
-      - name: Verify Nexus files compile clean
-        shell: pwsh
-        run: |
-          $log = dotnet build src/Core/DivinityModManagerCore.csproj --no-restore --configuration Release 2>&1 | Out-String
-          $LASTEXITCODE = 0
-          $ourErrors = $log -split "`n" | Where-Object {
-            $_ -match 'error CS' -and
-            $_ -match '(NexusMod|NexusLocal|NexusUpdate|NexusCheck|NexusSet|NexusManual|DivinityGlobalCommands)'
-          }
-          if ($ourErrors) {
-            Write-Host "::error::Compile errors in Nexus update detection files:"
-            $ourErrors | ForEach-Object { Write-Host "::error::$_" }
-            exit 1
-          }
-          Write-Host "No compile errors in Nexus update detection files"
-
-      # Download LL's latest release and swap in our modified DLLs
+      # Download LL's latest release for its pre-built native DLLs
       - name: Download upstream release
         shell: pwsh
         run: |
           gh release download 1.0.12.9 --repo LaughingLeader/BG3ModManager --pattern '*.zip' --dir .
-          Expand-Archive -Path BG3ModManager_Latest.zip -DestinationPath release -Force
+          Expand-Archive -Path BG3ModManager_Latest.zip -DestinationPath upstream-release -Force
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Swap modified DLLs into release
+      # Copy upstream DLLs into a reference folder the projects can use
+      - name: Setup reference DLLs from upstream
         shell: pwsh
         run: |
-          # Find our compiled DLLs from the Release build
-          $coreDll = Get-ChildItem -Recurse -Filter "DivinityModManagerCore.dll" -Path "bin" | Where-Object { $_.DirectoryName -match "Release" } | Select-Object -First 1
-          $guiDll = Get-ChildItem -Recurse -Filter "BG3ModManager.dll" -Path "bin" | Where-Object { $_.DirectoryName -match "Release" } | Select-Object -First 1
+          New-Item -ItemType Directory -Path "ref-dlls" -Force | Out-Null
+          # Copy all DLLs from upstream release as reference assemblies
+          Copy-Item "upstream-release/_Lib/*.dll" "ref-dlls/" -Force
+          Copy-Item "upstream-release/*.dll" "ref-dlls/" -Force
+          Write-Host "Reference DLLs: $(Get-ChildItem ref-dlls/*.dll | Measure-Object | Select-Object -Expand Count) files"
 
+      # Patch Core csproj: replace LSLib ProjectReferences with DLL references
+      - name: Patch Core csproj for CI build
+        shell: pwsh
+        run: |
+          $csproj = "src/Core/DivinityModManagerCore.csproj"
+          $content = Get-Content $csproj -Raw
+
+          # Remove LSLib ProjectReferences
+          $content = $content -replace '<ProjectReference Include="\$\(SolutionDir\)External\\lslib\\LSLibNative\\LSLibNative\.vcxproj"\s*/>', ''
+          $content = $content -replace '<ProjectReference Include="\$\(SolutionDir\)External\\lslib\\LSLib\\LSLib\.csproj"\s*/>', ''
+
+          # Add DLL references to upstream LSLib
+          $refBlock = @"
+          <Reference Include="LSLib">
+            <HintPath>`$(SolutionDir)ref-dlls\LSLib.dll</HintPath>
+          </Reference>
+          <Reference Include="LSLibNative">
+            <HintPath>`$(SolutionDir)ref-dlls\LSLibNative.dll</HintPath>
+          </Reference>
+          "@
+
+          # Insert before closing </ItemGroup> of last ProjectReference group
+          $content = $content -replace '(</ItemGroup>\s*</Project>)', "$refBlock`n  </ItemGroup>`n</Project>"
+
+          Set-Content $csproj $content
+          Write-Host "Patched Core csproj for CI build"
+
+      - name: Restore
+        run: dotnet restore BG3ModManager.sln
+        continue-on-error: true
+
+      - name: Restore Core
+        run: dotnet restore src/Core/DivinityModManagerCore.csproj
+
+      - name: Restore GUI
+        run: dotnet restore src/GUI/GUI.csproj
+
+      - name: Build Core
+        run: dotnet build src/Core/DivinityModManagerCore.csproj --no-restore --configuration Release
+        id: build-core
+
+      - name: Build GUI
+        run: dotnet build src/GUI/GUI.csproj --no-restore --configuration Release
+        id: build-gui
+
+      # Swap our compiled DLLs into the upstream release
+      - name: Package release
+        shell: pwsh
+        run: |
+          $coreDll = Get-ChildItem -Recurse -Filter "DivinityModManagerCore.dll" | Where-Object { $_.FullName -match "Release" -and $_.FullName -notmatch "ref-dlls|upstream" } | Select-Object -First 1
+          $guiDll = Get-ChildItem -Recurse -Filter "BG3ModManager.dll" | Where-Object { $_.FullName -match "Release" -and $_.FullName -notmatch "ref-dlls|upstream" } | Select-Object -First 1
+
+          $swapped = 0
           if ($coreDll) {
-            Copy-Item $coreDll.FullName "release/_Lib/DivinityModManagerCore.dll" -Force
-            Write-Host "Swapped Core DLL: $($coreDll.FullName)"
+            Copy-Item $coreDll.FullName "upstream-release/_Lib/DivinityModManagerCore.dll" -Force
+            Write-Host "Swapped Core DLL: $($coreDll.FullName) ($([math]::Round($coreDll.Length/1KB)) KB)"
+            $swapped++
           } else {
-            Write-Host "::warning::Core DLL not found in build output"
+            Write-Host "::warning::Core DLL not found"
           }
 
           if ($guiDll) {
-            Copy-Item $guiDll.FullName "release/BG3ModManager.dll" -Force
-            Write-Host "Swapped GUI DLL: $($guiDll.FullName)"
+            Copy-Item $guiDll.FullName "upstream-release/BG3ModManager.dll" -Force
+            Write-Host "Swapped GUI DLL: $($guiDll.FullName) ($([math]::Round($guiDll.Length/1KB)) KB)"
+            $swapped++
           } else {
-            Write-Host "::warning::GUI DLL not found in build output"
+            Write-Host "::warning::GUI DLL not found"
           }
 
-          # Package
-          Compress-Archive -Path "release/*" -DestinationPath "BG3ModManager_NexusUpdate.zip" -Force
-          $size = (Get-Item "BG3ModManager_NexusUpdate.zip").Length / 1MB
-          Write-Host "Package size: $([math]::Round($size, 1)) MB"
+          Compress-Archive -Path "upstream-release/*" -DestinationPath "BG3ModManager_NexusUpdate.zip" -Force
+          $size = [math]::Round((Get-Item "BG3ModManager_NexusUpdate.zip").Length / 1MB, 1)
+          Write-Host "Package: $size MB, $swapped/2 DLLs swapped"
+
+          if ($swapped -eq 0) { exit 1 }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
