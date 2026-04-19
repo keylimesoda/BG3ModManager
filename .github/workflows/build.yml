@@ -41,8 +41,8 @@ jobs:
       - name: Restore
         run: dotnet restore BG3ModManager.sln
 
-      - name: Build (Publish config)
-        run: msbuild BG3ModManager.sln /p:Configuration=Publish "/p:Platform=Any CPU" /m
+      - name: Build full solution
+        run: msbuild BG3ModManager.sln /p:Configuration=Release "/p:Platform=Any CPU" /m
         continue-on-error: true
 
       # Verify our Nexus code compiles clean
@@ -62,32 +62,44 @@ jobs:
           }
           Write-Host "No compile errors in Nexus update detection files"
 
-      # Package the build output as a downloadable artifact
-      - name: Package build
+      # Download LL's latest release and swap in our modified DLLs
+      - name: Download upstream release
         shell: pwsh
         run: |
-          # LL's csproj uses $(SolutionDir)\bin\$(Configuration)\ as output
-          $candidates = @('bin\Publish', 'bin/Publish', 'bin\Release', 'bin/Release')
-          $outDir = $null
-          foreach ($c in $candidates) {
-            if (Test-Path $c) {
-              $outDir = $c
-              break
-            }
-          }
-          if ($outDir) {
-            $count = (Get-ChildItem $outDir -Recurse -File | Measure-Object).Count
-            Write-Host "Packaging $count files from $outDir"
-            Compress-Archive -Path "$outDir\*" -DestinationPath "BG3ModManager_NexusUpdate.zip" -Force
+          gh release download 1.0.12.9 --repo LaughingLeader/BG3ModManager --pattern '*.zip' --dir .
+          Expand-Archive -Path BG3ModManager_Latest.zip -DestinationPath release -Force
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Swap modified DLLs into release
+        shell: pwsh
+        run: |
+          # Find our compiled DLLs from the Release build
+          $coreDll = Get-ChildItem -Recurse -Filter "DivinityModManagerCore.dll" -Path "bin" | Where-Object { $_.DirectoryName -match "Release" } | Select-Object -First 1
+          $guiDll = Get-ChildItem -Recurse -Filter "BG3ModManager.dll" -Path "bin" | Where-Object { $_.DirectoryName -match "Release" } | Select-Object -First 1
+
+          if ($coreDll) {
+            Copy-Item $coreDll.FullName "release/_Lib/DivinityModManagerCore.dll" -Force
+            Write-Host "Swapped Core DLL: $($coreDll.FullName)"
           } else {
-            Write-Host "::warning::No build output found. Listing bin/:"
-            Get-ChildItem bin -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object FullName
+            Write-Host "::warning::Core DLL not found in build output"
           }
+
+          if ($guiDll) {
+            Copy-Item $guiDll.FullName "release/BG3ModManager.dll" -Force
+            Write-Host "Swapped GUI DLL: $($guiDll.FullName)"
+          } else {
+            Write-Host "::warning::GUI DLL not found in build output"
+          }
+
+          # Package
+          Compress-Archive -Path "release/*" -DestinationPath "BG3ModManager_NexusUpdate.zip" -Force
+          $size = (Get-Item "BG3ModManager_NexusUpdate.zip").Length / 1MB
+          Write-Host "Package size: $([math]::Round($size, 1)) MB"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: BG3ModManager-NexusUpdate
           path: BG3ModManager_NexusUpdate.zip
-          if-no-files-found: warn
+          if-no-files-found: error
