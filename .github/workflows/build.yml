@@ -18,14 +18,10 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore Core
-        run: dotnet restore src/Core/DivinityModManagerCore.csproj
+      - uses: microsoft/setup-msbuild@v2
 
-      - name: Restore GUI
-        run: dotnet restore src/GUI/GUI.csproj
+      - name: Restore
+        run: dotnet restore BG3ModManager.sln
 
-      - name: Build Core
-        run: dotnet build src/Core/DivinityModManagerCore.csproj --no-restore --configuration Release
-
-      - name: Build GUI
-        run: dotnet build src/GUI/GUI.csproj --no-restore --configuration Release
+      - name: Build
+        run: msbuild BG3ModManager.sln /p:Configuration=Release /p:Platform="Any CPU" /m
