@@ -5,6 +5,7 @@ on:
     branches: [ feature/nexus-update-detection, master ]
   pull_request:
     branches: [ master ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -18,57 +19,46 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - uses: microsoft/setup-msbuild@v2
-
-      # Download LL's latest release for its pre-built native DLLs
+      # Download LL's latest release for pre-built native DLLs
       - name: Download upstream release
         shell: pwsh
         run: |
           gh release download 1.0.12.9 --repo LaughingLeader/BG3ModManager --pattern '*.zip' --dir .
           Expand-Archive -Path BG3ModManager_Latest.zip -DestinationPath upstream-release -Force
+          Write-Host "Upstream DLLs: $(Get-ChildItem upstream-release/_Lib/*.dll | Measure-Object | Select-Object -Expand Count)"
         env:
           GH_TOKEN: ${{ github.token }}
 
-      # Copy upstream DLLs into a reference folder the projects can use
-      - name: Setup reference DLLs from upstream
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path "ref-dlls" -Force | Out-Null
-          # Copy all DLLs from upstream release as reference assemblies
-          Copy-Item "upstream-release/_Lib/*.dll" "ref-dlls/" -Force
-          Copy-Item "upstream-release/*.dll" "ref-dlls/" -Force
-          Write-Host "Reference DLLs: $(Get-ChildItem ref-dlls/*.dll | Measure-Object | Select-Object -Expand Count) files"
-
-      # Patch Core csproj: replace LSLib ProjectReferences with DLL references
-      - name: Patch Core csproj for CI build
+      # Patch Core csproj: replace ProjectReferences with DLL references
+      - name: Patch csproj for CI
         shell: pwsh
         run: |
           $csproj = "src/Core/DivinityModManagerCore.csproj"
           $content = Get-Content $csproj -Raw
 
-          # Remove LSLib ProjectReferences
-          $content = $content -replace '<ProjectReference Include="\$\(SolutionDir\)External\\lslib\\LSLibNative\\LSLibNative\.vcxproj"\s*/>', ''
-          $content = $content -replace '<ProjectReference Include="\$\(SolutionDir\)External\\lslib\\LSLib\\LSLib\.csproj"\s*/>', ''
+          # Remove the three external ProjectReferences
+          $content = $content -replace '(?m)^\s*<ProjectReference Include="\$\(SolutionDir\)External\\lslib\\LSLibNative\\LSLibNative\.vcxproj"\s*/>\s*$', ''
+          $content = $content -replace '(?m)^\s*<ProjectReference Include="\$\(SolutionDir\)External\\lslib\\LSLib\\LSLib\.csproj"\s*/>\s*$', ''
+          $content = $content -replace '(?m)^\s*<ProjectReference Include="\$\(SolutionDir\)External\\CrossSpeak\\CrossSpeak\\CrossSpeak\.csproj"\s*/>\s*$', ''
 
-          # Add DLL references to upstream LSLib
-          $refBlock = @"
-          <Reference Include="LSLib">
-            <HintPath>`$(SolutionDir)ref-dlls\LSLib.dll</HintPath>
-          </Reference>
-          <Reference Include="LSLibNative">
-            <HintPath>`$(SolutionDir)ref-dlls\LSLibNative.dll</HintPath>
-          </Reference>
-          "@
+          # Add DLL references before the first </ItemGroup>
+          $refs = @"
 
-          # Insert before closing </ItemGroup> of last ProjectReference group
-          $content = $content -replace '(</ItemGroup>\s*</Project>)', "$refBlock`n  </ItemGroup>`n</Project>"
+    <Reference Include="LSLib">
+      <HintPath>$((Resolve-Path "upstream-release/_Lib/LSLib.dll").Path)</HintPath>
+    </Reference>
+    <Reference Include="LSLibNative">
+      <HintPath>$((Resolve-Path "upstream-release/_Lib/LSLibNative.dll").Path)</HintPath>
+    </Reference>
+    <Reference Include="CrossSpeak">
+      <HintPath>$((Resolve-Path "upstream-release/_Lib/CrossSpeak.dll").Path)</HintPath>
+    </Reference>
+"@
+          # Insert after first <ItemGroup> that contained ProjectReferences
+          $content = $content -replace '(</ItemGroup>)', "$refs`n  `$1", 1
 
-          Set-Content $csproj $content
-          Write-Host "Patched Core csproj for CI build"
-
-      - name: Restore
-        run: dotnet restore BG3ModManager.sln
-        continue-on-error: true
+          Set-Content $csproj $content -Encoding UTF8
+          Write-Host "Patched csproj — removed 3 ProjectReferences, added 3 DLL references"
 
       - name: Restore Core
         run: dotnet restore src/Core/DivinityModManagerCore.csproj
@@ -78,41 +68,49 @@ jobs:
 
       - name: Build Core
         run: dotnet build src/Core/DivinityModManagerCore.csproj --no-restore --configuration Release
-        id: build-core
 
       - name: Build GUI
         run: dotnet build src/GUI/GUI.csproj --no-restore --configuration Release
-        id: build-gui
 
       # Swap our compiled DLLs into the upstream release
       - name: Package release
         shell: pwsh
         run: |
-          $coreDll = Get-ChildItem -Recurse -Filter "DivinityModManagerCore.dll" | Where-Object { $_.FullName -match "Release" -and $_.FullName -notmatch "ref-dlls|upstream" } | Select-Object -First 1
-          $guiDll = Get-ChildItem -Recurse -Filter "BG3ModManager.dll" | Where-Object { $_.FullName -match "Release" -and $_.FullName -notmatch "ref-dlls|upstream" } | Select-Object -First 1
+          $coreDll = Get-ChildItem -Recurse -Filter "DivinityModManagerCore.dll" -Path "src" | Where-Object { $_.FullName -match "Release" } | Select-Object -First 1
+          $guiDll = Get-ChildItem -Recurse -Filter "BG3ModManager.dll" -Path "src" | Where-Object { $_.FullName -match "Release" } | Select-Object -First 1
+
+          # Also check bin/ (solution-level output)
+          if (-not $coreDll) {
+            $coreDll = Get-ChildItem -Recurse -Filter "DivinityModManagerCore.dll" -Path "bin" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "Release" } | Select-Object -First 1
+          }
+          if (-not $guiDll) {
+            $guiDll = Get-ChildItem -Recurse -Filter "BG3ModManager.dll" -Path "bin" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "Release" } | Select-Object -First 1
+          }
 
           $swapped = 0
           if ($coreDll) {
             Copy-Item $coreDll.FullName "upstream-release/_Lib/DivinityModManagerCore.dll" -Force
-            Write-Host "Swapped Core DLL: $($coreDll.FullName) ($([math]::Round($coreDll.Length/1KB)) KB)"
+            Write-Host "✓ Swapped Core: $($coreDll.FullName) ($([math]::Round($coreDll.Length/1KB)) KB)"
             $swapped++
           } else {
-            Write-Host "::warning::Core DLL not found"
+            Write-Host "::error::Core DLL not found!"
+            Get-ChildItem -Recurse -Filter "DivinityModManagerCore.dll" | ForEach-Object { Write-Host "  Found: $($_.FullName)" }
           }
 
           if ($guiDll) {
             Copy-Item $guiDll.FullName "upstream-release/BG3ModManager.dll" -Force
-            Write-Host "Swapped GUI DLL: $($guiDll.FullName) ($([math]::Round($guiDll.Length/1KB)) KB)"
+            Write-Host "✓ Swapped GUI: $($guiDll.FullName) ($([math]::Round($guiDll.Length/1KB)) KB)"
             $swapped++
           } else {
-            Write-Host "::warning::GUI DLL not found"
+            Write-Host "::error::GUI DLL not found!"
+            Get-ChildItem -Recurse -Filter "BG3ModManager.dll" | Where-Object { $_.FullName -notmatch "upstream" } | ForEach-Object { Write-Host "  Found: $($_.FullName)" }
           }
 
           Compress-Archive -Path "upstream-release/*" -DestinationPath "BG3ModManager_NexusUpdate.zip" -Force
           $size = [math]::Round((Get-Item "BG3ModManager_NexusUpdate.zip").Length / 1MB, 1)
-          Write-Host "Package: $size MB, $swapped/2 DLLs swapped"
+          Write-Host "Package: $size MB ($swapped/2 DLLs swapped)"
 
-          if ($swapped -eq 0) { exit 1 }
+          if ($swapped -lt 1) { exit 1 }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
