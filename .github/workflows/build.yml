@@ -66,13 +66,22 @@ jobs:
       - name: Package build
         shell: pwsh
         run: |
-          $outDir = "bin/Publish"
-          if (Test-Path $outDir) {
-            Compress-Archive -Path "$outDir/*" -DestinationPath "BG3ModManager_NexusUpdate.zip" -Force
-            Write-Host "Packaged $(Get-ChildItem $outDir | Measure-Object | Select-Object -Expand Count) files"
+          # LL's csproj uses $(SolutionDir)\bin\$(Configuration)\ as output
+          $candidates = @('bin\Publish', 'bin/Publish', 'bin\Release', 'bin/Release')
+          $outDir = $null
+          foreach ($c in $candidates) {
+            if (Test-Path $c) {
+              $outDir = $c
+              break
+            }
+          }
+          if ($outDir) {
+            $count = (Get-ChildItem $outDir -Recurse -File | Measure-Object).Count
+            Write-Host "Packaging $count files from $outDir"
+            Compress-Archive -Path "$outDir\*" -DestinationPath "BG3ModManager_NexusUpdate.zip" -Force
           } else {
-            Write-Host "::warning::Build output not found at $outDir — listing bin/"
-            Get-ChildItem bin/ -Recurse -Depth 2 | Select-Object FullName
+            Write-Host "::warning::No build output found. Listing bin/:"
+            Get-ChildItem bin -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object FullName
           }
 
       - name: Upload artifact
